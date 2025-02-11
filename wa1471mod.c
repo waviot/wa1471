@@ -13,8 +13,8 @@ mod_bitrate_s current_tx_phy;
 void wa1471_bpsk_pin_send(uint8_t* data, mod_bitrate_s bitrate);
 void wa1471mod_init()
 {
-	if(send_by_dbpsk == WA1471_SEND_BY_I_Q_MODULATOR)
-          wa1471mod_set_hop_table((mod_hop_channels_t *)mod_current_hop_table);
+	//if(send_by_dbpsk == WA1471_SEND_BY_I_Q_MODULATOR)
+       //   wa1471mod_set_hop_table((mod_hop_channels_t *)mod_current_hop_table);
 
 }
 
@@ -87,6 +87,7 @@ void wa1471mod_send(uint8_t* data, mod_bitrate_s bitrate)
 	}
 }
 
+/*
 void wa1471mod_set_hop_table(mod_hop_channels_t *hop_table)
 {
 	for(uint8_t i = 0; i != 8; i++)
@@ -94,7 +95,7 @@ void wa1471mod_set_hop_table(mod_hop_channels_t *hop_table)
 		wa1471_spi_write8(MOD_HOP_TBL_START + i, (uint8_t)hop_table[i]);
 		mod_current_hop_table[i] = hop_table[i];
 	}
-}
+}*/
 
 uint16_t wa1471mod_phy_to_bitrate(mod_bitrate_s bitrate)
 {

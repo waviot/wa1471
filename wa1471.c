@@ -75,7 +75,7 @@ void wa1471_init(_Bool send_by_bpsk_pin, uint32_t preambule, wa1471_HAL_st* hal_
         if((wa1471_hal == 0) || (wa1471_scheduler == 0)) while(1); //HAL and scheduler pointers must be provided
         send_by_dbpsk = send_by_bpsk_pin;
 	//wa1471rfe_init();
-        wa1471dem_init(preambule);
+        wa1471dem_init(DEM_50BPS_OFFSET, preambule);
 	wa1471mod_init(send_by_dbpsk);
 
 }
@@ -85,7 +85,7 @@ void wa1471_reinit(uint32_t preambule)
         wa1471rfe_deinit();
         wa1471_hal->__wa1471_nop_dalay_ms(2);
         wa1471rfe_init();
-        wa1471dem_init(preambule);
+        wa1471dem_init(DEM_50BPS_OFFSET, preambule);
   	    wa1471mod_init(send_by_dbpsk);
 }
 

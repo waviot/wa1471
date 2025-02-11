@@ -1,4 +1,5 @@
 #ifdef WA1471
+
 #ifndef _wa1471DEM_H
 #define _wa1471DEM_H
 
@@ -31,7 +32,7 @@ typedef struct {
 	uint8_t crc[3];
 } dem_protd_st;
 
-/*typedef struct {
+typedef struct {
 	dem_protd_st packet;
 	uint8_t freq;
 	uint8_t dummy;
@@ -43,9 +44,9 @@ typedef struct {
 	uint8_t inverted;
 	uint8_t i_or_q;
 	uint8_t dummy2;
-} dem_packet_st;*/
+} dem_packet_st;
 
-
+/*
 typedef struct {
   dem_protd_st packet; // 20 
   uint32_t rssi[39:8]; 
@@ -54,7 +55,7 @@ typedef struct {
   uint8_t shift; // 8-bit - D
   uint8_t rssi[7:0];
   uint8_t receiverID;
-} dem_packet_st;
+} dem_packet_st;*/
 
 #pragma pack(pop)
 
@@ -64,7 +65,6 @@ typedef enum
 	DBPSK_400_PROT_D	= 11,
 	DBPSK_3200_PROT_D	= 12,
 	DBPSK_25600_PROT_D	= 13,
-	DBPSK_100H_PROT_D	= 18,
     DBPSK_UNDEFINED         = 100
 }dem_bitrate_s;
 
@@ -79,10 +79,17 @@ typedef struct {
 
 //----------------------------------------------------------
 // DEMODULATOR REGs
-//----------------------------------------------------------
+//--------------------------------------------------------
+
+#define DEM_50BPS_OFFSET        0x0100
+#define DEM_400BPS_OFFSET        0x0200
+#define DEM_3200BPS_OFFSET        0x0400
+#define DEM_25600BPS_OFFSET        0x0800
+
+
 #define DEM_RECEIVED_MES_BUF	0
-#define DEM_CONTROL				0x20
-#define DEM_RX_MODE				0x21 //not used 
+#define DEM_CONTROL			0x20
+#define DEM_RX_MODE			0x21 //not used 
 #define DEM_DET_TRESHOLD		0x22
 #define DEM_NOSE_START_BIT		0x24
 #define DEM_ALPHA_SHIFT		0x25
@@ -101,17 +108,15 @@ typedef struct {
 #define DEM_CONTROL_IRQ_FLAG	0x80
 
 
-void wa1471dem_init(uint32_t preambula);
+void wa1471dem_init(uint16_t dem_mask, uint32_t preambula);
 void wa1471dem_rx_enable(_Bool en);
 void wa1471dem_isr(void);
-void wa1471dem_reset(void);
+void wa1471dem_reset(uint16_t dem_mask);
 void wa1471dem_set_bitrate(dem_bitrate_s bitrate);
-void wa1471dem_set_alpha(uint8_t noise_start_bit, uint8_t shift);
-void wa1471dem_set_hop_table(uint8_t* hop);
-void wa1471dem_set_hop_len(uint8_t hop_len);
-void wa1471dem_set_crc_poly(uint8_t* crc);
-void wa1471dem_set_preambule(uint8_t* preambule);
-void wa1471dem_set_threshold(uint16_t SOFT_DETECT_THR);
+void wa1471dem_set_alpha(uint16_t dem_offset, uint8_t noise_start_bit, uint8_t shift);
+void wa1471dem_set_crc_poly(uint16_t dem_offset,uint8_t* crc);
+void wa1471dem_set_preambule(uint16_t dem_offset, uint8_t* preambule);
+void wa1471dem_set_threshold(uint16_t dem_offset, uint16_t SOFT_DETECT_THR);
 void wa1471dem_set_freq(uint32_t freq);
 float wa1471dem_get_rssi();
 float wa1471dem_get_noise();

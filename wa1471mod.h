@@ -14,7 +14,7 @@
 #define MOD_PER2				(MOD_SPI_OFFSET + 0x3)
 #define MOD_DATA_START			        (MOD_SPI_OFFSET + 0x4)
 
-#define MOD_HOP_TBL_START		        (MOD_SPI_OFFSET + 0x54) //not used
+//#define MOD_HOP_TBL_START		        (MOD_SPI_OFFSET + 0x54) //not used
 
 #define MOD_MESS_LEN0	                        (MOD_SPI_OFFSET + 0x5C) //1-640
 #define MOD_MESS_LEN1	                        (MOD_SPI_OFFSET + 0x5D) 
@@ -92,7 +92,7 @@ typedef enum
 
 void wa1471mod_init();
 void wa1471mod_isr(void);
-void wa1471mod_set_hop_table(mod_hop_channels_t *hop_table);
+//void wa1471mod_set_hop_table(mod_hop_channels_t *hop_table);
 uint16_t wa1471mod_phy_to_bitrate(mod_bitrate_s bitrate);
 void wa1471mod_set_bitrate(mod_bitrate_s bitrate);
 void wa1471mod_send(uint8_t* data, mod_bitrate_s bitrate);

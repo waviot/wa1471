@@ -52,6 +52,7 @@ void wa1471dem_init(uint16_t dem_mask, uint32_t preambule)
           wa1471dem_set_threshold(dem_offset, 800); //1024
           wa1471_spi_read(dem_offset+ DEM_DET_TRESHOLD, buf, 2);
           wa1471dem_set_alpha(dem_offset, 128, 5);
+          //wa1471_spi_write8(0x2080, 30);
           wa1471dem_set_crc_poly(dem_offset, NB_FI_RX_CRC_POLY);
           if(preambule) wa1471dem_set_preambule(dem_offset, (uint8_t *)&preambule);
           wa1471_spi_write8(dem_offset+DEM_FFT_MSB, 0x80 + 23); //?
@@ -196,15 +197,19 @@ void wa1471dem_isr(void)
 
 	wa1471_spi_read(DEM_50BPS_OFFSET + DEM_STATUS, &status, 1);
 
+        
 	if(!(status))
 		return;
 	dem_packet_st new_packet;
 
 	do
 	{
-		wa1471_spi_read(DEM_RECEIVED_MES_BUF, (uint8_t*)(&new_packet), 32);
+               uint16_t dem_offset;
+               for(dem_offset = DEM_50BPS_OFFSET; dem_offset&(status<<4); dem_offset <<= 1);
+               if(!dem_offset) break;
+		wa1471_spi_read(dem_offset + DEM_RECEIVED_MES_BUF, (uint8_t*)(&new_packet), 32);
 
-		wa1471_spi_write8(DEM_RECEIVED_MES_BUF, 0);
+		wa1471_spi_write8(dem_offset + DEM_RECEIVED_MES_BUF, 0);
 
 
 		dem_mas[dem_mess_received] = new_packet;
@@ -397,7 +402,8 @@ static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
 
 static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
 {
-	uint8_t data[128];
+	uint16_t data[64];
+        //uint8_t data[128];
 	uint8_t size;
 	uint32_t rssi = 0;
 	uint32_t max = 0;
@@ -422,18 +428,29 @@ static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
 		break;
 	}
 
+        while(!wa1471_spi_read8(dem_offset+ DEM_CONTROL)&DEM_CONTROL_FFT_READY);
+        
         wa1471_spi_read(dem_offset+ DEM_FFT_READ_BUF, (uint8_t*)(&data[0]), 2*size);
+        
         wa1471_spi_write8(dem_offset + DEM_FFT_READ_BUF + 100, 0);
-                 
+               
+        uint16_t tmp;
 	for(int i = 0; i != size; i++)
 	{
+          tmp = data[i];
+          if(i%2 == 0) {
+            data[i] = data[i+1];
+            data[i+1] = tmp;
+          }
+
          
-                 uint32_t fft_mag = (uint32_t)(powf(2, (8+(data[2*i] + 256 * data[2*i+1])/256)));
-		rssi += fft_mag;
+        uint32_t fft_mag = (uint32_t)(powf(2, ( 8 + (((uint8_t*)(&data[0]))[2*i] + 256 * ((uint8_t*)(&data[0]))[2*i+1])/256)));
+	//uint32_t fft_mag = (uint32_t)(powf(2,  8 + (data[2*i] + 256 * data[2*i+1])/256));	
+          rssi += fft_mag;
 		if(fft_mag > max)
 			max = fft_mag;
 #ifdef DEM_CALC_SPECTRUM
-		dem_spectrum_mas[i] = ((dem_spectrum_mas[i]*15 + fft_mag + 1)>>4);
+		dem_spectrum_mas[i] = fft_mag;//((dem_spectrum_mas[i]*7 + fft_mag + 1)>>3);
 #endif
 	}
 	return (aver_or_max?rssi/size:max);

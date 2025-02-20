@@ -52,7 +52,7 @@ void wa1471dem_init(uint16_t dem_mask, uint32_t preambule)
           wa1471dem_set_threshold(dem_offset, 800); //1024
           wa1471_spi_read(dem_offset+ DEM_DET_TRESHOLD, buf, 2);
           wa1471dem_set_alpha(dem_offset, 128, 5);
-          //wa1471_spi_write8(0x2080, 30);
+          wa1471_spi_write8(0x2080, 21);
           wa1471dem_set_crc_poly(dem_offset, NB_FI_RX_CRC_POLY);
           if(preambule) wa1471dem_set_preambule(dem_offset, (uint8_t *)&preambule);
           wa1471_spi_write8(dem_offset+DEM_FFT_MSB, 0x80 + 23); //?
@@ -103,9 +103,11 @@ static uint8_t wa1471dem_get_bitrate_gain(dem_bitrate_s bitrate)
 }
 
 #define DEM_LOGOFFSET  208
+
 static int16_t wa1471dem_get_rssi_logoffset()
 {
-	return DEM_LOGOFFSET + rfe_rx_total_vga_gain - wa1471dem_get_bitrate_gain(current_rx_phy);
+	//return DEM_LOGOFFSET + rfe_rx_total_vga_gain - wa1471dem_get_bitrate_gain(current_rx_phy);
+  return 200 - wa1471dem_get_bitrate_gain(current_rx_phy);
 }
 
 static void  wa1471dem_process_messages(struct scheduler_desc *desc)
@@ -114,12 +116,9 @@ static void  wa1471dem_process_messages(struct scheduler_desc *desc)
 
 	tmp_dem_mess_received = dem_mess_received;
 	memcpy(tmp_dem_mas, dem_mas, sizeof(tmp_dem_mas));
-	//memcpy(tmp_dem_info_mas, dem_info_mas, sizeof(tmp_dem_info_mas));
 	dem_mess_received = 0;
 	memset(dem_mas, 0 , sizeof(dem_mas));
-	//memset(dem_info_mas, 0 , sizeof(dem_info_mas));
-    dem_packet_info_st info;
-
+        dem_packet_info_st info;
 
 	wa1471_hal->__wa1471_enable_pin_irq();
 
@@ -132,12 +131,12 @@ static void  wa1471dem_process_messages(struct scheduler_desc *desc)
 #ifdef WA1471_LOG
 			sprintf(wa1471_log_string, "%05u: PLD: ", (uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff));
 			for(uint8_t k = 0; k != 8; k++)
-				sprintf(wa1471_log_string + strlen(wa1471_log_string), "%02X", tmp_dem_mas[i].packet.payload[k]);
-			sprintf(wa1471_log_string + strlen(wa1471_log_string), " IT crypto=%3d FREQ=%2d", tmp_dem_mas[i].packet.iter, tmp_dem_mas[i].freq&0x1f);
+				sprintf(wa1471_log_string + strlen(wa1471_log_string), "%02X", tmp_dem_mas[i].packet.protd.payload[k]);
+			sprintf(wa1471_log_string + strlen(wa1471_log_string), " IT crypto=%3d FREQ=%2d", tmp_dem_mas[i].packet.protd.iter, tmp_dem_mas[i].freq&0x3f);
 #endif
-                        uint64_t rssi64 = tmp_dem_mas[i].rssi_39_32;
-			rssi64 <<= 32;
-			rssi64 += tmp_dem_mas[i].rssi;
+                        uint64_t rssi64 = tmp_dem_mas[i].rssi_39_8;
+			rssi64 <<= 8;
+			rssi64 += tmp_dem_mas[i].rssi_7_0;
 			float rssi = log10f(rssi64)*20 - 48 - wa1471dem_get_rssi_logoffset();
 			info.rssi = (int16_t)rssi;
 			float snr = rssi - dem_noise;
@@ -148,12 +147,24 @@ static void  wa1471dem_process_messages(struct scheduler_desc *desc)
             switch(current_rx_phy)
 			{
                 case DBPSK_50_PROT_D:
-                    info.freq += tmp_dem_mas[i].freq*50;
+                     if(tmp_dem_mas[i].freq < 32)
+                        info.freq += tmp_dem_mas[i].freq*50;
+                    else info.freq -= tmp_dem_mas[i].freq*50;
                     break;
                 case DBPSK_400_PROT_D:
-                    if(tmp_dem_mas[i].freq < 2)
+                    if(tmp_dem_mas[i].freq < 4)
                         info.freq += tmp_dem_mas[i].freq*400;
                     else info.freq -= tmp_dem_mas[i].freq*400;
+                    break;
+                 case DBPSK_3200_PROT_D:
+                    if(tmp_dem_mas[i].freq < 4)
+                        info.freq += tmp_dem_mas[i].freq*3200;
+                    else info.freq -= tmp_dem_mas[i].freq*3200;
+                    break;
+                 case DBPSK_25600_PROT_D:
+                    if(tmp_dem_mas[i].freq < 2)
+                        info.freq += tmp_dem_mas[i].freq*25600;
+                    else info.freq -= tmp_dem_mas[i].freq*25600;
                     break;
             }
 
@@ -179,10 +190,6 @@ static void  wa1471dem_process_messages(struct scheduler_desc *desc)
 			case DBPSK_25600_PROT_D:
 				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 25600BPS");
 				break;
-			case DBPSK_100H_PROT_D:
-				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 100HBPS");
-				break;
-
 			}
 			wa1471_hal->__wa1471_log_send_str(wa1471_log_string);
 #endif
@@ -205,9 +212,15 @@ void wa1471dem_isr(void)
 	do
 	{
                uint16_t dem_offset;
-               for(dem_offset = DEM_50BPS_OFFSET; dem_offset&(status<<4); dem_offset <<= 1);
+               
+               for(dem_offset = DEM_50BPS_OFFSET; dem_offset != 0; dem_offset <<= 1){
+               
+                if(dem_offset&(status<<8)) break;
+               }
+               
                if(!dem_offset) break;
-		wa1471_spi_read(dem_offset + DEM_RECEIVED_MES_BUF, (uint8_t*)(&new_packet), 32);
+               
+		wa1471_spi_read(dem_offset + DEM_RECEIVED_MES_BUF, (uint8_t*)(&new_packet), sizeof(dem_packet_st));
 
 		wa1471_spi_write8(dem_offset + DEM_RECEIVED_MES_BUF, 0);
 
@@ -218,19 +231,14 @@ void wa1471dem_isr(void)
 		if(dem_mess_received == (DEM_MAS_SIZE - 1))
 			return;
 
-		wa1471_scheduler->__scheduler_add_task(&dem_processMessages_desc,  wa1471dem_process_messages, RELATIVE, (current_rx_phy == DBPSK_25600_PROT_D)?MILLISECONDS(10):MILLISECONDS(20));
+		wa1471_scheduler->__scheduler_add_task(&dem_processMessages_desc,  wa1471dem_process_messages, RELATIVE, (current_rx_phy == DBPSK_25600_PROT_D)?MILLISECONDS(1):MILLISECONDS(20));
                 wa1471_scheduler->__scheduler_add_task(&dem_update_noise_desc,  wa1471dem_update_noise, RELATIVE, MILLISECONDS(DEM_NOISE_TICK));
 		uint8_t i;
 		for(i = 0; i < dem_mess_received; i++)
 		{
-			if(dem_mas[i].packet.flags == dem_mas[dem_mess_received].packet.flags)
+			if(dem_mas[i].packet.protd.flags == dem_mas[dem_mess_received].packet.protd.flags)
 				break;
 		}
-
-		/*if(new_packet.crc_or_zigzag)
-			dem_info_mas[i].num_of_zigzag++;
-		else
-			dem_info_mas[i].num_of_crc++;*/
 
 		if(i == dem_mess_received)
 		{
@@ -238,11 +246,11 @@ void wa1471dem_isr(void)
 		}
 		else
 		{
-			if((dem_mas[i].rssi_39_32 < new_packet.rssi_39_32))
+			if((dem_mas[i].rssi_39_8 < new_packet.rssi_39_8))
 			{
 				dem_mas[i] = dem_mas[dem_mess_received];
 			}
-			else if((dem_mas[i].rssi_39_32 == new_packet.rssi_39_32) && (dem_mas[i].rssi < new_packet.rssi))
+			else if((dem_mas[i].rssi_39_8 == new_packet.rssi_39_8) && (dem_mas[i].rssi_7_0 < new_packet.rssi_7_0))
 			{
 				dem_mas[i] = dem_mas[dem_mess_received];
 			}
@@ -337,21 +345,15 @@ void wa1471dem_set_preambule(uint16_t dem_offset, uint8_t* preambule)
 	wa1471_spi_write(dem_offset+DEM_PREAMBLE_ID, preambule, 4);
 }
 
+void setRxFreq(uint64_t freq);
 
 void wa1471dem_set_freq(uint32_t freq)
 {
-	switch(current_rx_phy)
-	{
-	case DBPSK_50_PROT_D:
-	case DBPSK_400_PROT_D:
-	case DBPSK_3200_PROT_D:
-		wa1471rfe_set_freq(freq - DEM_FREQ_OFFSET/*DEM_FREQ_OFFSETS[current_hop_table[0]]*/);
-		break;
-	case DBPSK_25600_PROT_D:
-		wa1471rfe_set_freq(freq - DEM_FREQ_OFFSET/*DEM_FREQ_OFFSETS[current_hop_table[1]]*/);
-		break;
-	}
-    last_rx_freq = freq;
+        //wa1471rfe_set_freq(freq + DEM_FREQ_OFFSET);
+    
+        setRxFreq(freq + DEM_FREQ_OFFSET);
+        
+        last_rx_freq = freq;
 
         #ifdef WA1471_LOG
 	sprintf(wa1471_log_string, "%05u: dem_set_freq to %ld", ((uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff)), freq);
@@ -359,47 +361,7 @@ void wa1471dem_set_freq(uint32_t freq)
         #endif
 }
 
-/*
-static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
-{
-	uint32_t data[32];
-	uint8_t size;
-	uint32_t rssi = 0;
-	uint32_t max = 0;
-	switch(current_rx_phy)
-	{
-	case DBPSK_50_PROT_D:
-		size = 32;
-		break;
-	case DBPSK_400_PROT_D:
-		size = 4;
-		break;
-	case DBPSK_3200_PROT_D:
-		size = 1;
-		break;
-	case DBPSK_25600_PROT_D:
-		size = 1;
-		break;
-	case DBPSK_100H_PROT_D:
-		size = 16;
-		break;
-	}
-	wa1471_spi_read(DEM_FFT_READ_BUF, (uint8_t*)(&data[0]), 4*size);
-	wa1471_spi_write8(DEM_FFT_READ_BUF + 100, 0);
-
-	for(int i = 0; i != size; i++)
-	{
-		rssi += data[i];
-		if(data[i] > max)
-			max = data[i];
-#ifdef DEM_CALC_SPECTRUM
-		dem_spectrum_mas[i] = ((dem_spectrum_mas[i]*15 + data[i] + 1)>>4);
-#endif
-	}
-	return (aver_or_max?rssi/size:max);
-}*/
-
-
+//#include "stm32_init.h"
 static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
 {
 	uint16_t data[64];
@@ -428,13 +390,14 @@ static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
 		break;
 	}
 
-        while(!wa1471_spi_read8(dem_offset+ DEM_CONTROL)&DEM_CONTROL_FFT_READY);
-        
+        while(!wa1471_spi_read8(dem_offset+ DEM_CONTROL)&DEM_CONTROL_FFT_READY);     
+
         wa1471_spi_read(dem_offset+ DEM_FFT_READ_BUF, (uint8_t*)(&data[0]), 2*size);
-        
+
         wa1471_spi_write8(dem_offset + DEM_FFT_READ_BUF + 100, 0);
                
         uint16_t tmp;
+        
 	for(int i = 0; i != size; i++)
 	{
           tmp = data[i];
@@ -444,15 +407,15 @@ static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
           }
 
          
-        uint32_t fft_mag = (uint32_t)(powf(2, ( 8 + (((uint8_t*)(&data[0]))[2*i] + 256 * ((uint8_t*)(&data[0]))[2*i+1])/256)));
-	//uint32_t fft_mag = (uint32_t)(powf(2,  8 + (data[2*i] + 256 * data[2*i+1])/256));	
-          rssi += fft_mag;
+        uint32_t fft_mag = (uint32_t)(powf(2, ( 8 + (float)((((uint8_t*)(&data[0]))[2*i]) + 256 * (float)(((uint8_t*)(&data[0]))[2*i+1]))/256)));
+        rssi += fft_mag;
 		if(fft_mag > max)
 			max = fft_mag;
 #ifdef DEM_CALC_SPECTRUM
 		dem_spectrum_mas[i] = fft_mag;//((dem_spectrum_mas[i]*7 + fft_mag + 1)>>3);
 #endif
 	}
+          //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET);
 	return (aver_or_max?rssi/size:max);
 }
 
@@ -480,6 +443,8 @@ uint8_t wa1471dem_get_noise_calc_duration()
     const uint8_t NBFI_NOISE_DINAMIC_D[4] = {20, 8, 5, 5};
     return NBFI_NOISE_DINAMIC_D[current_rx_phy - DBPSK_50_PROT_D];
 }
+
+
 
 static void wa1471dem_update_noise(struct scheduler_desc *desc)
 {

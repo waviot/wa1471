@@ -11,8 +11,6 @@
 #include "wa1471_defines.h"
 #include "ischeduler.h"
 
-#define WA1471_SEND_BY_I_Q_MODULATOR	        0
-#define WA1471_SEND_BY_BPSK_PIN			        1
 
 
 #ifdef WA1471_LOG
@@ -32,7 +30,6 @@ typedef struct
   void (*__wa1471_data_received)(uint8_t *, uint8_t *);
   void (*__wa1471_tx_finished)(void);
   void (*__wa1471_nop_dalay_ms)(uint32_t);
-  void (*__wa1471_send_to_bpsk_pin)(uint8_t *, uint16_t, uint16_t);
   void (*__wa1471_log_send_str)(const char *str);
 }wa1471_HAL_st;
 
@@ -41,7 +38,7 @@ extern wa1471_HAL_st *wa1471_hal;
 extern ischeduler_st* wa1471_scheduler;
 
 
-void wa1471_init(_Bool send_by_bpsk_pin, uint32_t modem_id, wa1471_HAL_st*, ischeduler_st*);
+void wa1471_init(uint32_t modem_id, wa1471_HAL_st*, ischeduler_st*);
 void wa1471_reinit(uint32_t preambule);
 void wa1471_deinit();
 void wa1471_spi_write(uint16_t address, uint8_t *data, uint8_t length);

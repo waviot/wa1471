@@ -33,11 +33,6 @@ void wa1471rfe_init()
 
 	wa1471rfe_set_pll_mode(RFE_PLL_MODE_FRACTIONAL);
 
-	if(send_by_dbpsk)
-		wa1471rfe_set_tx_mode(RFE_TX_MODE_BPSK);
-	else
-		wa1471rfe_set_tx_mode(RFE_TX_MODE_I_Q);
-
 	wa1471rfe_set_rx_mode(RFE_RX_MODE_LONF);
 	wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN);
 
@@ -95,10 +90,6 @@ void wa1471rfe_set_pll_mode(rfe_pll_mode_s mode)
 	rfe_pll_mode_fractional = (mode == RFE_PLL_MODE_FRACTIONAL);
 }
 
-void wa1471rfe_set_tx_mode(rfe_tx_mode_s mode)
-{
-	wa1471_spi_write8( RFE_IQ_TX_MODE, (uint8_t)mode);
-}
 
 void wa1471rfe_set_rx_mode(rfe_rx_mode_s mode)
 {

@@ -33,6 +33,13 @@ typedef struct {
 } dem_protd_st;
 
 typedef struct {
+        //uint8_t id[4];
+	dem_protd_st protd;
+        uint8_t id[4];
+} dem_prote_st;
+
+
+/*typedef struct {
 	dem_protd_st packet;
 	uint8_t freq;
 	uint8_t dummy;
@@ -44,18 +51,18 @@ typedef struct {
 	uint8_t inverted;
 	uint8_t i_or_q;
 	uint8_t dummy2;
-} dem_packet_st;
+} dem_packet_st;*/
 
-/*
+
 typedef struct {
-  dem_protd_st packet; // 20 
-  uint32_t rssi[39:8]; 
+  dem_prote_st packet; // 20 
+  uint32_t rssi_39_8; 
   uint32_t noise;      
   uint8_t freq; 
   uint8_t shift; // 8-bit - D
-  uint8_t rssi[7:0];
+  uint8_t rssi_7_0;
   uint8_t receiverID;
-} dem_packet_st;*/
+} dem_packet_st;
 
 #pragma pack(pop)
 
@@ -72,9 +79,7 @@ typedef struct {
 	dem_bitrate_s bitrate;
 	int16_t rssi;
 	uint8_t snr;
-    uint32_t freq;
-	//uint8_t	num_of_crc;
-	//uint8_t	num_of_zigzag;
+        uint32_t freq;
 } dem_packet_info_st;
 
 //----------------------------------------------------------

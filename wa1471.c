@@ -2,7 +2,7 @@
 
 #include "wa1471.h"
 
-#define SPI_WAIT_TIMEOUT		1000 //100000
+#define SPI_WAIT_TIMEOUT		0//1000 //100000
 
 wa1471_HAL_st *wa1471_hal = 0;
 ischeduler_st* wa1471_scheduler = 0;
@@ -106,5 +106,7 @@ _Bool wa1471_cansleep()
 {
 	return 1;
 }
+
+
 
 #endif //#ifdef WA1471

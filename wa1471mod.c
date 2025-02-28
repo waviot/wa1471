@@ -53,6 +53,30 @@ void wa1471mod_isr(void)
 void wa1471mod_send(uint8_t* data, mod_bitrate_s bitrate)
 {
 
+    #ifdef WA1471_LOG
+  sprintf(wa1471_log_string, "%05u: Send pkt", (uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff));
+	
+  switch(bitrate)
+  {
+    case MOD_DBPSK_50_PROT_D:
+    case MOD_DBPSK_50_PROT_E:
+      sprintf(wa1471_log_string + strlen(wa1471_log_string), " 50BPS");
+      break;
+    case MOD_DBPSK_400_PROT_D:
+    case MOD_DBPSK_400_PROT_E:
+      sprintf(wa1471_log_string + strlen(wa1471_log_string), " 400BPS");
+	break;
+    case MOD_DBPSK_3200_PROT_D:
+    case MOD_DBPSK_3200_PROT_E:  
+      sprintf(wa1471_log_string + strlen(wa1471_log_string), " 3200BPS");
+	break;
+    case MOD_DBPSK_25600_PROT_D:
+    case MOD_DBPSK_25600_PROT_E:  
+      sprintf(wa1471_log_string + strlen(wa1471_log_string), " 25600BPS");
+	break;
+  }
+  wa1471_hal->__wa1471_log_send_str(wa1471_log_string);
+  #endif
 	wa1471mod_set_bitrate(bitrate);
 
 	switch(bitrate)

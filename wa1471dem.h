@@ -33,25 +33,9 @@ typedef struct {
 } dem_protd_st;
 
 typedef struct {
-        //uint8_t id[4];
-	dem_protd_st protd;
         uint8_t id[4];
+        dem_protd_st protd;
 } dem_prote_st;
-
-
-/*typedef struct {
-	dem_protd_st packet;
-	uint8_t freq;
-	uint8_t dummy;
-	uint8_t rot;
-	uint32_t rssi;
-	uint8_t rssi_39_32;
-	uint32_t noise;
-	uint8_t crc_or_zigzag;
-	uint8_t inverted;
-	uint8_t i_or_q;
-	uint8_t dummy2;
-} dem_packet_st;*/
 
 
 typedef struct {
@@ -62,9 +46,12 @@ typedef struct {
   uint8_t shift; // 8-bit - D
   uint8_t rssi_7_0;
   uint8_t receiverID;
+  uint32_t time_detected;
 } dem_packet_st;
 
 #pragma pack(pop)
+
+
 
 typedef enum
 {
@@ -72,6 +59,10 @@ typedef enum
 	DBPSK_400_PROT_D	= 11,
 	DBPSK_3200_PROT_D	= 12,
 	DBPSK_25600_PROT_D	= 13,
+        DBPSK_50_PROT_E        = 14,
+	DBPSK_400_PROT_E	= 15,
+	DBPSK_3200_PROT_E	= 16,
+	DBPSK_25600_PROT_E	= 17,
     DBPSK_UNDEFINED         = 100
 }dem_bitrate_s;
 
@@ -80,6 +71,7 @@ typedef struct {
 	int16_t rssi;
 	uint8_t snr;
         uint32_t freq;
+        uint8_t* prote_id;
 } dem_packet_info_st;
 
 //----------------------------------------------------------

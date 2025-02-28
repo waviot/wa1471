@@ -1,7 +1,7 @@
 #ifdef WA1471
 #include "wa1471.h"
 #include "math.h"
-#define DEM_MAS_SIZE	8
+#define DEM_MAS_SIZE	16
 
 
 dem_packet_st dem_mas[DEM_MAS_SIZE];
@@ -20,6 +20,8 @@ dem_bitrate_s current_rx_phy = DBPSK_UNDEFINED;
 
 _Bool dem_rx_enabled = 0;
 
+uint32_t time_detected,time_processed;
+
 //uint8_t current_hop_table[8] = {DEM_MINUS90000,DEM_MINUS40000,DEM_PLUS40000,DEM_PLUS15000,DEM_MINUS15000,DEM_MINUS40000,DEM_MINUS65000,DEM_MINUS90000};
 
 #define DEM_FREQ_OFFSET         50000
@@ -30,6 +32,7 @@ struct scheduler_desc dem_update_noise_desc;
 float dem_noise = -150;
 static void wa1471dem_update_noise(struct scheduler_desc *desc);
 
+uint32_t last_preambule = 0;
 uint32_t last_rx_freq = 0;
 
 #ifdef DEM_CALC_SPECTRUM
@@ -39,26 +42,37 @@ uint32_t dem_spectrum_mas[64];
         uint8_t buf[2];
 void wa1471dem_init(uint16_t dem_mask, uint32_t preambule)
 {
-
-	uint8_t NB_FI_RX_CRC_POLY[4] = {0xb7, 0x1d, 0xc1, 0x04};
+        #ifdef WA1471_LOG
+	sprintf(wa1471_log_string, "%05u: wa1471dem_init begin", ((uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff)));
+	wa1471_hal->__wa1471_log_send_str(wa1471_log_string);
+        #endif
+	//uint8_t NB_FI_RX_CRC_POLY[4] = {0xb7, 0x1d, 0xc1, 0x04};
         
         if(dem_mask == 0) dem_mask = DEM_50BPS_OFFSET + DEM_400BPS_OFFSET + DEM_3200BPS_OFFSET + DEM_25600BPS_OFFSET;
+        
+        if(preambule) last_preambule = preambule;
         
         for(uint16_t dem_offset = DEM_50BPS_OFFSET; dem_offset != 0; dem_offset <<= 1)
         {
           if(dem_mask&dem_offset == 0) continue;
           
-          wa1471_spi_write8(dem_offset + DEM_CONTROL, DEM_CONTROL_RESET);  
-          wa1471dem_set_threshold(dem_offset, 800); //1024
-          wa1471_spi_read(dem_offset+ DEM_DET_TRESHOLD, buf, 2);
-          wa1471dem_set_alpha(dem_offset, 128, 5);
-          wa1471_spi_write8(0x2080, 21);
-          wa1471dem_set_crc_poly(dem_offset, NB_FI_RX_CRC_POLY);
-          if(preambule) wa1471dem_set_preambule(dem_offset, (uint8_t *)&preambule);
-          wa1471_spi_write8(dem_offset+DEM_FFT_MSB, 0x80 + 23); //?
-          wa1471_spi_write8(dem_offset+DEM_CONTROL, 0);
-          wa1471dem_update_noise(0);
+          //wa1471_spi_write8(dem_offset + DEM_CONTROL, DEM_CONTROL_RESET);  
+          //wa1471dem_set_threshold(dem_offset, 800); //1024
+          //wa1471dem_set_alpha(dem_offset, 128, 5);
+         
+          //wa1471dem_set_crc_poly(dem_offset, NB_FI_RX_CRC_POLY);
+          
+          //if(preambule) wa1471dem_set_preambule(dem_offset, (uint8_t *)&preambule);
+          //wa1471_spi_write8(dem_offset+DEM_FFT_MSB, 0x80 + 23); //?
+          //wa1471_spi_write8(dem_offset+DEM_CONTROL, 0);
         }
+        
+        //wa1471dem_update_noise(0);        
+        
+         #ifdef WA1471_LOG
+	sprintf(wa1471_log_string, "%05u: wa1471dem_init end", ((uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff)));
+	wa1471_hal->__wa1471_log_send_str(wa1471_log_string);
+        #endif
         
 }
 
@@ -90,13 +104,17 @@ static uint8_t wa1471dem_get_bitrate_gain(dem_bitrate_s bitrate)
 	switch(bitrate)
 	{
 	case DBPSK_50_PROT_D:
+        case DBPSK_50_PROT_E:   
 		return 0;
 	case DBPSK_400_PROT_D:
+        case DBPSK_400_PROT_E:  
 		return 18;
 	case DBPSK_3200_PROT_D:
-		return 56;
+        case DBPSK_3200_PROT_E:
+		return 12;//56;
 	case DBPSK_25600_PROT_D:
-		return 112;
+        case DBPSK_25600_PROT_E:  
+		return 39;//112;
 	default:
 		return 1;
 	}
@@ -107,13 +125,20 @@ static uint8_t wa1471dem_get_bitrate_gain(dem_bitrate_s bitrate)
 static int16_t wa1471dem_get_rssi_logoffset()
 {
 	//return DEM_LOGOFFSET + rfe_rx_total_vga_gain - wa1471dem_get_bitrate_gain(current_rx_phy);
-  return 200 - wa1471dem_get_bitrate_gain(current_rx_phy);
+  return 215 - wa1471dem_get_bitrate_gain(current_rx_phy);
+}
+
+static dem_protd_st* wa1471dem_protd_ptr(dem_packet_st* packet, _Bool protd_or_e)
+{
+  if(protd_or_e) return ((dem_protd_st*)(&packet->packet.id[0]));
+  else return ((dem_protd_st*)(&packet->packet.protd));
 }
 
 static void  wa1471dem_process_messages(struct scheduler_desc *desc)
 {
+  
+        time_processed = wa1471_scheduler->__scheduler_curr_time()&0xffff;
 	wa1471_hal->__wa1471_disable_pin_irq();
-
 	tmp_dem_mess_received = dem_mess_received;
 	memcpy(tmp_dem_mas, dem_mas, sizeof(tmp_dem_mas));
 	dem_mess_received = 0;
@@ -143,35 +168,67 @@ static void  wa1471dem_process_messages(struct scheduler_desc *desc)
 			if(snr < 0) snr = 0;
 			info.snr = (uint8_t)snr;
             info.freq = last_rx_freq;
-            info.bitrate = current_rx_phy;
-            switch(current_rx_phy)
-			{
-                case DBPSK_50_PROT_D:
+            
+            //tmp_dem_mas[i].shift&=0x7f;
+            
+            int16_t freq_shift = ((tmp_dem_mas[i].shift&0x0f)%3);
+            switch(freq_shift){
+              case 0:
+                break;
+              case 1:
+                  freq_shift = -1;
+                break;
+              case 2:
+                freq_shift = 1;
+                break;
+            }
+            switch(tmp_dem_mas[i].receiverID)
+            {
+               case 0:
+               //case DBPSK_50_PROT_D:
+               //case DBPSK_50_PROT_E:   
+                    if(tmp_dem_mas[i].shift&0x80) info.bitrate = DBPSK_50_PROT_D;
+                    else info.bitrate = DBPSK_50_PROT_E;                 
                      if(tmp_dem_mas[i].freq < 32)
-                        info.freq += tmp_dem_mas[i].freq*50;
+                        info.freq += tmp_dem_mas[i].freq*50 ;
                     else info.freq -= tmp_dem_mas[i].freq*50;
-                    break;
-                case DBPSK_400_PROT_D:
+                    info.freq += freq_shift*16;
+                   break;
+                case 1:
+                //case DBPSK_400_PROT_D:
+               //case DBPSK_400_PROT_E:   
+                    if(tmp_dem_mas[i].shift&0x80) info.bitrate = DBPSK_400_PROT_D;
+                    else info.bitrate = DBPSK_400_PROT_E;
                     if(tmp_dem_mas[i].freq < 4)
                         info.freq += tmp_dem_mas[i].freq*400;
                     else info.freq -= tmp_dem_mas[i].freq*400;
-                    break;
-                 case DBPSK_3200_PROT_D:
+                    info.freq += freq_shift*133;
+                   break;
+                 case 2:
+                    //case DBPSK_3200_PROT_D:
+                 //case DBPSK_3200_PROT_E: 
+                    if(tmp_dem_mas[i].shift&0x80) info.bitrate = DBPSK_3200_PROT_D;
+                    else info.bitrate = DBPSK_3200_PROT_E;
                     if(tmp_dem_mas[i].freq < 4)
                         info.freq += tmp_dem_mas[i].freq*3200;
                     else info.freq -= tmp_dem_mas[i].freq*3200;
-                    break;
-                 case DBPSK_25600_PROT_D:
+                    info.freq += freq_shift*1067;
+                   break;
+                 case 3:
+                    //case DBPSK_25600_PROT_D:
+                 //case DBPSK_25600_PROT_E: 
+                    if(tmp_dem_mas[i].shift&0x80) info.bitrate = DBPSK_25600_PROT_D;
+                    else info.bitrate = DBPSK_25600_PROT_E;
                     if(tmp_dem_mas[i].freq < 2)
                         info.freq += tmp_dem_mas[i].freq*25600;
                     else info.freq -= tmp_dem_mas[i].freq*25600;
-                    break;
+                    info.freq += freq_shift*8533;
+                   break;
             }
-
 
 #ifdef WA1471_LOG
             float dsnr = log10f(((float)rssi64)/tmp_dem_mas[i].noise/4)*20;
-			sprintf(wa1471_log_string + strlen(wa1471_log_string), " RSSI=%ld", tmp_dem_mas[i].rssi);
+			sprintf(wa1471_log_string + strlen(wa1471_log_string), " RSSI=%ld", tmp_dem_mas[i].rssi_39_8);
 			sprintf(wa1471_log_string + strlen(wa1471_log_string), " LRSSI=%f", rssi);
 			sprintf(wa1471_log_string + strlen(wa1471_log_string), " SNR=%f", rssi - dem_noise);
 			sprintf(wa1471_log_string + strlen(wa1471_log_string), " DSNR=%f", dsnr);
@@ -179,24 +236,61 @@ static void  wa1471dem_process_messages(struct scheduler_desc *desc)
 			switch(current_rx_phy)
 			{
 			case DBPSK_50_PROT_D:
+                        case DBPSK_50_PROT_E:  
 				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 50BPS");
 				break;
 			case DBPSK_400_PROT_D:
+                        case DBPSK_400_PROT_E:  
 				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 400BPS");
 				break;
 			case DBPSK_3200_PROT_D:
+                        case DBPSK_3200_PROT_E:  
 				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 3200BPS");
 				break;
 			case DBPSK_25600_PROT_D:
+                        case DBPSK_25600_PROT_E:  
 				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 25600BPS");
 				break;
 			}
 			wa1471_hal->__wa1471_log_send_str(wa1471_log_string);
 #endif
-			wa1471_hal->__wa1471_data_received((uint8_t*)&tmp_dem_mas[i].packet, (uint8_t*)&info);
+                        
+                        if(tmp_dem_mas[i].shift&0x80) {
+                          //protd
+                            wa1471_hal->__wa1471_data_received((uint8_t*)&tmp_dem_mas[i].packet.id, (uint8_t*)&info);
+                        } else {
+                          //prote
+                          info.prote_id = &tmp_dem_mas[i].packet.id[0];
+                          wa1471_hal->__wa1471_data_received((uint8_t*)&tmp_dem_mas[i].packet.protd, (uint8_t*)&info);
+                        }
+			
 		}
 	}
 }
+
+
+static uint8_t wa1471dem_wait_for_copies_timeout(dem_bitrate_s bitrate)
+{
+  switch(bitrate)
+	{
+	case DBPSK_50_PROT_D:
+        case DBPSK_50_PROT_E:   
+		return 100;
+	case DBPSK_400_PROT_D:
+        case DBPSK_400_PROT_E:  
+		return 10;
+	case DBPSK_3200_PROT_D:
+        case DBPSK_3200_PROT_E:  
+		return 10;
+	case DBPSK_25600_PROT_D:
+        case DBPSK_25600_PROT_E:  
+	default:
+          return 1;
+	}
+}
+
+
+
 
 void wa1471dem_isr(void)
 {
@@ -230,13 +324,18 @@ void wa1471dem_isr(void)
 
 		if(dem_mess_received == (DEM_MAS_SIZE - 1))
 			return;
-
-		wa1471_scheduler->__scheduler_add_task(&dem_processMessages_desc,  wa1471dem_process_messages, RELATIVE, (current_rx_phy == DBPSK_25600_PROT_D)?MILLISECONDS(1):MILLISECONDS(20));
+                 dem_mas[dem_mess_received].time_detected = wa1471_scheduler->__scheduler_curr_time()&0xffff;
+		wa1471_scheduler->__scheduler_add_task(&dem_processMessages_desc,  wa1471dem_process_messages, RELATIVE, MILLISECONDS(wa1471dem_wait_for_copies_timeout(current_rx_phy)));
                 wa1471_scheduler->__scheduler_add_task(&dem_update_noise_desc,  wa1471dem_update_noise, RELATIVE, MILLISECONDS(DEM_NOISE_TICK));
-		uint8_t i;
+		//dem_mess_received++;
+               //_Bool protd =  new_packet.shift&0x80;
+               
+               
+               uint8_t i;
 		for(i = 0; i < dem_mess_received; i++)
-		{
-			if(dem_mas[i].packet.protd.flags == dem_mas[dem_mess_received].packet.protd.flags)
+		{                       
+                  
+			if(wa1471dem_protd_ptr(&dem_mas[i], (new_packet.shift&0x80))->flags == wa1471dem_protd_ptr(&dem_mas[dem_mess_received], (new_packet.shift&0x80))->flags)
 				break;
 		}
 
@@ -266,13 +365,17 @@ int16_t wa1471dem_get_bitrate_sensitivity(dem_bitrate_s bitrate)
 	switch(bitrate)
 	{
 	case DBPSK_50_PROT_D:
+        case DBPSK_50_PROT_E:   
 	default:
 		return -148;
 	case DBPSK_400_PROT_D:
+        case DBPSK_400_PROT_E:
 		return -139;
 	case DBPSK_3200_PROT_D:
+        case DBPSK_3200_PROT_E:  
 		return -130;
 	case DBPSK_25600_PROT_D:
+        case DBPSK_25600_PROT_E:     
 		return -118;
 	}
 }
@@ -290,20 +393,28 @@ void wa1471dem_set_bitrate(dem_bitrate_s bitrate)
 	switch(bitrate)
 	{
 	case DBPSK_50_PROT_D:
+        case DBPSK_50_PROT_E:  
 		wa1471dem_reset(DEM_50BPS_OFFSET);
+               if(last_preambule) wa1471dem_set_preambule(DEM_50BPS_OFFSET, (uint8_t *)&last_preambule);
 		wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN);
 	break;
 	case DBPSK_400_PROT_D:
+        case DBPSK_400_PROT_E:
 		wa1471dem_reset(DEM_400BPS_OFFSET);
+               if(last_preambule) wa1471dem_set_preambule(DEM_400BPS_OFFSET, (uint8_t *)&last_preambule);                
 		wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN);
 	break;
 	case DBPSK_3200_PROT_D:
+        case DBPSK_3200_PROT_E:
 		wa1471dem_reset(DEM_3200BPS_OFFSET);
+               if(last_preambule) wa1471dem_set_preambule(DEM_3200BPS_OFFSET, (uint8_t *)&last_preambule);                
 		wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN + 6);
 	break;
 	case DBPSK_25600_PROT_D:
+        case DBPSK_25600_PROT_E:  
 		wa1471dem_reset(DEM_25600BPS_OFFSET);
-		wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN + 24);
+               if(last_preambule) wa1471dem_set_preambule(DEM_25600BPS_OFFSET, (uint8_t *)&last_preambule);    
+               wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN + 24);
 	break;
 	}
               
@@ -351,12 +462,17 @@ void wa1471dem_set_freq(uint32_t freq)
 {
         //wa1471rfe_set_freq(freq + DEM_FREQ_OFFSET);
     
+          #ifdef WA1471_LOG
+	sprintf(wa1471_log_string, "%05u: dem_set_freq to %ld", ((uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff)), freq);
+	wa1471_hal->__wa1471_log_send_str(wa1471_log_string);
+        #endif
+  
         setRxFreq(freq + DEM_FREQ_OFFSET);
         
         last_rx_freq = freq;
 
         #ifdef WA1471_LOG
-	sprintf(wa1471_log_string, "%05u: dem_set_freq to %ld", ((uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff)), freq);
+	sprintf(wa1471_log_string, "%05u: dem_set_freq end", ((uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff)));
 	wa1471_hal->__wa1471_log_send_str(wa1471_log_string);
         #endif
 }
@@ -364,27 +480,35 @@ void wa1471dem_set_freq(uint32_t freq)
 //#include "stm32_init.h"
 static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
 {
+  
+  return 0;
 	uint16_t data[64];
         //uint8_t data[128];
 	uint8_t size;
 	uint32_t rssi = 0;
 	uint32_t max = 0;
         uint16_t dem_offset;
+        
 	switch(current_rx_phy)
 	{
 	case DBPSK_50_PROT_D:
+        case DBPSK_50_PROT_E:  
 		size = 64;
                 dem_offset = DEM_50BPS_OFFSET;
 		break;
 	case DBPSK_400_PROT_D:
-		size = 8;
+	case DBPSK_400_PROT_E:
+	        size = 8;
                 dem_offset = DEM_400BPS_OFFSET;
 		break;
 	case DBPSK_3200_PROT_D:
+        case DBPSK_3200_PROT_E:  
 		size = 8;
                  dem_offset = DEM_3200BPS_OFFSET;
 		break;
 	case DBPSK_25600_PROT_D:
+        case DBPSK_25600_PROT_E:
+  
 		size = 4;
                  dem_offset = DEM_25600BPS_OFFSET;
 		break;
@@ -441,19 +565,22 @@ void wa1471dem_get_spectrum(uint8_t size, float* data)
 uint8_t wa1471dem_get_noise_calc_duration()
 {
     const uint8_t NBFI_NOISE_DINAMIC_D[4] = {20, 8, 5, 5};
-    return NBFI_NOISE_DINAMIC_D[current_rx_phy - DBPSK_50_PROT_D];
+    if(current_rx_phy >= DBPSK_50_PROT_E) return NBFI_NOISE_DINAMIC_D[current_rx_phy - DBPSK_50_PROT_E];
+    else return NBFI_NOISE_DINAMIC_D[current_rx_phy - DBPSK_50_PROT_D];
 }
 
 
 
 static void wa1471dem_update_noise(struct scheduler_desc *desc)
 {
+ 
 
 	static uint32_t dem_noise_sum;
 	static uint32_t dem_noise_min;
 	static uint8_t dem_noise_cntr;
 	static uint8_t dem_noise_min_cntr ;
 
+        
 	if(desc == 0) //init noise engine
 	{
 		dem_noise_min = 0xffffffff;

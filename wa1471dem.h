@@ -83,6 +83,18 @@ typedef struct {
 #define DEM_3200BPS_OFFSET        0x0400
 #define DEM_25600BPS_OFFSET        0x0800
 
+#define DEM_ENABLE_ALL        0x00
+#define DEM_ENABLE_ALL_E        0xAA
+#define DEM_ENABLE_ALL_D        0x55
+#define DEM_50E_ENABLE        0xFE
+#define DEM_50D_ENABLE        0xFD
+#define DEM_400E_ENABLE        0xFB
+#define DEM_400D_ENABLE        0xF7
+#define DEM_3200E_ENABLE        0xEF
+#define DEM_3200D_ENABLE        0xDF
+#define DEM_25600E_ENABLE        0xBF
+#define DEM_25600D_ENABLE        0x7F
+
 
 #define DEM_RECEIVED_MES_BUF	0
 #define DEM_CONTROL			0x20
@@ -97,6 +109,11 @@ typedef struct {
 #define DEM_CRC_POLY			0x2E
 #define DEM_HOP_TABLE			0x32 //not used
 #define DEM_STATUS			0x36
+#define DEM_ENABLE			0x37
+#define DEM_AVER_RSSI			0x38
+
+
+
 #define DEM_FFT_READ_BUF		0x80
 //#define DEM_GAIN			0x88
 

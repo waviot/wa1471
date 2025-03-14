@@ -89,15 +89,23 @@ void wa1471dem_reset(uint16_t dem_mask)
 
 }
 
-void wa1471dem_enable(uint16_t dem_mask)
+/*void wa1471dem_enable(uint16_t dem_mask)
 {
    for(uint16_t dem_offset = DEM_50BPS_OFFSET; dem_offset != 0; dem_offset <<= 1)
    {
       if(dem_mask&dem_offset != 0) wa1471_spi_write8(dem_offset + DEM_CONTROL, 0);
       else wa1471_spi_write8(dem_offset + DEM_CONTROL, DEM_CONTROL_RESET);
    }
-}
+}*/
 
+uint8_t tmp_dem_en_mask;
+     
+void wa1471dem_enable(uint8_t dem_en_mask)
+{
+  tmp_dem_en_mask  =  dem_en_mask;
+  wa1471_spi_write8(DEM_50BPS_OFFSET+ DEM_ENABLE, dem_en_mask); 
+  tmp_dem_en_mask =  wa1471_spi_read8(DEM_50BPS_OFFSET + DEM_ENABLE);
+}
 
 static uint8_t wa1471dem_get_bitrate_gain(dem_bitrate_s bitrate)
 {
@@ -157,7 +165,7 @@ static void  wa1471dem_process_messages(struct scheduler_desc *desc)
 			sprintf(wa1471_log_string, "%05u: PLD: ", (uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff));
 			for(uint8_t k = 0; k != 8; k++)
 				sprintf(wa1471_log_string + strlen(wa1471_log_string), "%02X", tmp_dem_mas[i].packet.protd.payload[k]);
-			sprintf(wa1471_log_string + strlen(wa1471_log_string), " IT crypto=%3d FREQ=%2d", tmp_dem_mas[i].packet.protd.iter, tmp_dem_mas[i].freq&0x3f);
+			sprintf(wa1471_log_string + strlen(wa1471_log_string), " IT crypto=%3d ", tmp_dem_mas[i].packet.protd.iter);
 #endif
                         uint64_t rssi64 = tmp_dem_mas[i].rssi_39_8;
 			rssi64 <<= 8;
@@ -228,28 +236,37 @@ static void  wa1471dem_process_messages(struct scheduler_desc *desc)
 
 #ifdef WA1471_LOG
             float dsnr = log10f(((float)rssi64)/tmp_dem_mas[i].noise/4)*20;
+                       sprintf(wa1471_log_string + strlen(wa1471_log_string), " FREQ=%d", info.freq);
 			sprintf(wa1471_log_string + strlen(wa1471_log_string), " RSSI=%ld", tmp_dem_mas[i].rssi_39_8);
 			sprintf(wa1471_log_string + strlen(wa1471_log_string), " LRSSI=%f", rssi);
 			sprintf(wa1471_log_string + strlen(wa1471_log_string), " SNR=%f", rssi - dem_noise);
-			sprintf(wa1471_log_string + strlen(wa1471_log_string), " DSNR=%f", dsnr);
+			sprintf(wa1471_log_string + strlen(wa1471_log_string), " NOISE=%f", dem_noise);
 
-			switch(current_rx_phy)
+			switch(info.bitrate)
 			{
 			case DBPSK_50_PROT_D:
+                              sprintf(wa1471_log_string + strlen(wa1471_log_string), " 50D");
+                              break;
                         case DBPSK_50_PROT_E:  
-				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 50BPS");
+				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 50E");
 				break;
 			case DBPSK_400_PROT_D:
+                         	sprintf(wa1471_log_string + strlen(wa1471_log_string), " 400D");
+				break; 
                         case DBPSK_400_PROT_E:  
-				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 400BPS");
+				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 400E");
 				break;
 			case DBPSK_3200_PROT_D:
+                          	sprintf(wa1471_log_string + strlen(wa1471_log_string), " 3200D");
+				break;
                         case DBPSK_3200_PROT_E:  
-				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 3200BPS");
+				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 3200E");
 				break;
 			case DBPSK_25600_PROT_D:
+                          	sprintf(wa1471_log_string + strlen(wa1471_log_string), " 25600D");
+				break;
                         case DBPSK_25600_PROT_E:  
-				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 25600BPS");
+				sprintf(wa1471_log_string + strlen(wa1471_log_string), " 25600E");
 				break;
 			}
 			wa1471_hal->__wa1471_log_send_str(wa1471_log_string);
@@ -389,35 +406,46 @@ static int8_t wa1471dem_get_sensitivity_diff(dem_bitrate_s bitrate_1, dem_bitrat
 
 void wa1471dem_set_bitrate(dem_bitrate_s bitrate)
 {
-               
+  uint8_t en_mask = 0;      
+  
 	switch(bitrate)
 	{
 	case DBPSK_50_PROT_D:
-        case DBPSK_50_PROT_E:  
+            en_mask = DEM_50D_ENABLE;
+        case DBPSK_50_PROT_E: 
+          if(en_mask == 0) en_mask = DEM_50E_ENABLE;
 		wa1471dem_reset(DEM_50BPS_OFFSET);
-               if(last_preambule) wa1471dem_set_preambule(DEM_50BPS_OFFSET, (uint8_t *)&last_preambule);
+                if(last_preambule) wa1471dem_set_preambule(DEM_50BPS_OFFSET, (uint8_t *)&last_preambule);
 		wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN);
-	break;
+                break;
 	case DBPSK_400_PROT_D:
+          en_mask = DEM_400D_ENABLE;
         case DBPSK_400_PROT_E:
+           if(en_mask == 0) en_mask = DEM_400E_ENABLE;
 		wa1471dem_reset(DEM_400BPS_OFFSET);
                if(last_preambule) wa1471dem_set_preambule(DEM_400BPS_OFFSET, (uint8_t *)&last_preambule);                
 		wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN);
 	break;
 	case DBPSK_3200_PROT_D:
+          en_mask = DEM_3200D_ENABLE;
         case DBPSK_3200_PROT_E:
+          if(en_mask == 0) en_mask = DEM_3200E_ENABLE;
 		wa1471dem_reset(DEM_3200BPS_OFFSET);
                if(last_preambule) wa1471dem_set_preambule(DEM_3200BPS_OFFSET, (uint8_t *)&last_preambule);                
 		wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN + 6);
 	break;
 	case DBPSK_25600_PROT_D:
+          en_mask = DEM_25600D_ENABLE;
         case DBPSK_25600_PROT_E:  
+          if(en_mask == 0) en_mask = DEM_25600E_ENABLE;
 		wa1471dem_reset(DEM_25600BPS_OFFSET);
                if(last_preambule) wa1471dem_set_preambule(DEM_25600BPS_OFFSET, (uint8_t *)&last_preambule);    
                wa1471rfe_set_rx_gain(RFE_DEFAULT_VGA_GAIN + 24);
 	break;
 	}
-              
+        
+        wa1471dem_enable(en_mask);
+        
 	dem_noise -= wa1471dem_get_sensitivity_diff(current_rx_phy, bitrate);
 	
         if(current_rx_phy != bitrate) wa1471dem_update_noise(0); //reinit noise engine
@@ -462,7 +490,7 @@ void wa1471dem_set_freq(uint32_t freq)
 {
         //wa1471rfe_set_freq(freq + DEM_FREQ_OFFSET);
     
-          #ifdef WA1471_LOG
+        #ifdef WA1471_LOG
 	sprintf(wa1471_log_string, "%05u: dem_set_freq to %ld", ((uint16_t)(wa1471_scheduler->__scheduler_curr_time()&0xffff)), freq);
 	wa1471_hal->__wa1471_log_send_str(wa1471_log_string);
         #endif
@@ -481,15 +509,13 @@ void wa1471dem_set_freq(uint32_t freq)
 static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
 {
   
-  return 0;
-	uint16_t data[64];
-        //uint8_t data[128];
-	uint8_t size;
+  //return 0;
 	uint32_t rssi = 0;
-	uint32_t max = 0;
-        uint16_t dem_offset;
+        uint16_t dem_offset;	
+        uint8_t size;
         
-	switch(current_rx_phy)
+        
+        switch(current_rx_phy)
 	{
 	case DBPSK_50_PROT_D:
         case DBPSK_50_PROT_E:  
@@ -512,7 +538,16 @@ static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
 		size = 4;
                  dem_offset = DEM_25600BPS_OFFSET;
 		break;
+        default:
+                return 0;
+          
 	}
+        
+#ifdef DEM_CALC_SPECTRUM 
+  
+	uint16_t data[64];
+
+	uint32_t max = 0;
 
         while(!wa1471_spi_read8(dem_offset+ DEM_CONTROL)&DEM_CONTROL_FFT_READY);     
 
@@ -532,15 +567,20 @@ static uint32_t wa1471dem_get_rssi_int(_Bool aver_or_max)
 
          
         uint32_t fft_mag = (uint32_t)(powf(2, ( 8 + (float)((((uint8_t*)(&data[0]))[2*i]) + 256 * (float)(((uint8_t*)(&data[0]))[2*i+1]))/256)));
+        
         rssi += fft_mag;
 		if(fft_mag > max)
 			max = fft_mag;
-#ifdef DEM_CALC_SPECTRUM
-		dem_spectrum_mas[i] = fft_mag;//((dem_spectrum_mas[i]*7 + fft_mag + 1)>>3);
-#endif
+//#ifdef DEM_CALC_SPECTRUM
+		dem_spectrum_mas[i] = ((dem_spectrum_mas[i]*7 + fft_mag + 1)>>3);
+//#endif
 	}
           //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET);
 	return (aver_or_max?rssi/size:max);
+#else
+      wa1471_spi_read(dem_offset+ DEM_AVER_RSSI, ((uint8_t*)&rssi), 4);
+      return rssi/size;
+#endif
 }
 
 
